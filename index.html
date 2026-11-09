@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>指尖掌勺 · 手势小厨房</title>
+<link rel="stylesheet" href="style.css">
+<link rel="modulepreload" href="./vendor/mediapipe/vision_bundle.mjs">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="brand">
+      <div class="brand-mark">勺</div>
+      <div class="brand-text">
+        <h1>指尖掌勺</h1>
+        <p>TIP-TOP CHEF</p>
+      </div>
+    </div>
+
+    <div class="recipe">
+      <span class="recipe-label">今日菜谱</span>
+      <span class="recipe-name" id="recipeName">番茄炒蛋</span>
+      <span class="recipe-tag" id="recipeTag">新手 · 8 分钟</span>
+    </div>
+
+    <nav id="stepper" aria-label="烹饪步骤"></nav>
+  </header>
+
+  <main id="layout">
+    <!-- 左：食材托盘 -->
+    <aside id="tray" class="panel">
+      <div class="panel-head">
+        <h2>食材托盘</h2>
+        <span id="trayCount">0 / 3</span>
+      </div>
+
+      <div class="tray-list" id="trayList"></div>
+
+      <p class="panel-tip">捏合拇指与食指抓起食材，移到锅里松开手。<br>对着镜头比出 1~4 指，也能直接下锅。</p>
+
+      <div class="panel-sep"></div>
+
+      <div class="panel-head slim"><h2>键盘备用</h2></div>
+      <ul class="keys">
+        <li id="keyDigits"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><span>对应食材直接下锅</span></li>
+        <li><kbd>Space</kbd><span>自动翻炒 / 再按暂停</span></li>
+        <li><kbd>Enter</kbd><span>出锅装盘</span></li>
+      </ul>
+    </aside>
+
+    <!-- 中：灶台 -->
+    <section id="kitchen">
+      <div class="stage-label"><b>01</b> 灶台 · WOK STATION</div>
+
+      <div class="stove">
+        <div class="burner"></div>
+
+        <div class="pan-wrap" id="pan">
+          <svg class="pan-ring" viewBox="0 0 200 200" aria-hidden="true">
+            <circle class="ring-track" cx="100" cy="100" r="92"/>
+            <circle class="ring-fill" id="ringFill" cx="100" cy="100" r="92"/>
+          </svg>
+          <div class="pan-outer">
+            <div class="pan-inner" id="panInner">
+              <div class="pan-oil"></div>
+              <div class="pan-gloss"></div>
+            </div>
+          </div>
+          <div class="pan-handle"></div>
+        </div>
+
+        <div id="steamLayer" aria-hidden="true"></div>
+        <div id="seasonLayer" aria-hidden="true"></div>
+        <div id="sizzle" aria-hidden="true"></div>
+        <div id="comboPop" aria-hidden="true"><b id="comboNum">×2</b><span>连击</span></div>
+      </div>
+
+      <div id="phaseCard">
+        <div class="phase-top">
+          <span id="phaseIndex">STEP 1 / 4</span>
+          <span id="phaseBadge">摄像头手势</span>
+        </div>
+        <h3 id="phaseTitle">抓起第一样食材</h3>
+        <p id="phaseDesc">捏合手指，抓起托盘里的食材，移到锅上方松开。</p>
+        <div class="phase-bar"><i id="phaseFill"></i></div>
+      </div>
+    </section>
+
+    <!-- 右：状态 -->
+    <aside id="hud">
+      <div class="hud-card">
+        <div class="hud-head"><span>手势状态</span><span id="handCount">0 只手</span></div>
+        <div id="gestureChip" class="gesture-chip">
+          <b>等待手掌</b>
+          <em>把手放进画面</em>
+        </div>
+        <div class="meters">
+          <div class="meter">
+            <label>张开度</label>
+            <div class="bar"><i id="openFill"></i></div>
+          </div>
+          <div class="meter">
+            <label>捏合度</label>
+            <div class="bar pinch"><i id="pinchFill"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-card">
+        <div class="hud-head"><span>翻炒进度</span><b id="stirPct">0%</b></div>
+        <div class="bigbar"><i id="stirFill"></i></div>
+        <div class="hud-note" id="stirNote">食材下锅后开始计圈</div>
+      </div>
+
+      <div class="hud-card cam-card">
+        <div class="cam-frame">
+          <video id="cam" autoplay playsinline muted></video>
+          <canvas id="skel" width="320" height="240"></canvas>
+          <div class="cam-off" id="camOff">
+            <span>摄像头未开启</span>
+            <small>可用鼠标或键盘完成</small>
+          </div>
+        </div>
+        <div class="cam-foot"><i id="camDot"></i><span id="camState">等待权限</span></div>
+      </div>
+
+      <div class="hud-card score-card">
+        <div><span>实时评分</span><em>LIVE</em></div>
+        <b id="liveScore">--</b>
+      </div>
+    </aside>
+  </main>
+
+  <div id="toast" aria-live="polite"></div>
+
+  <div id="handCursor" class="hidden" aria-hidden="true">
+    <div class="cursor-ring"></div>
+    <div class="cursor-core"></div>
+    <span id="cursorLabel">捏合</span>
+  </div>
+
+  <div id="dragGhost" class="hidden" aria-hidden="true"></div>
+
+  <!-- 进入页 -->
+  <div id="gate">
+    <div class="gate-card">
+      <div class="gate-kicker">GESTURE KITCHEN · 01</div>
+      <h2>让手，成为你的锅铲。</h2>
+      <p class="gate-intro">热菜、甜品、饮品共七道，从备料到出餐，全程用手完成。<br>先选一道；手离镜头 40–60cm、光线亮一点，识别更灵敏。</p>
+
+      <section class="dish-picker">
+        <div class="dish-picker-head">
+          <b>选一道</b>
+          <div class="dish-tabs" id="dishTabs" aria-label="菜品分类"></div>
+        </div>
+        <div class="dish-options" id="dishOptions"></div>
+        <div class="record-strip">
+          <span class="record-label">成就</span>
+          <div class="record-badges" id="badgeList"></div>
+          <span class="record-total" id="recordSummary">还没开火</span>
+        </div>
+      </section>
+
+      <ul class="gate-steps"></ul>
+
+      <button id="startBtn" type="button">
+        <span id="startText">开 火 下 厨</span>
+        <em id="startHint">点击后请求摄像头</em>
+      </button>
+
+      <p class="gate-note">没有摄像头？鼠标点选或拖动也能玩 · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 下料 · <kbd>Space</kbd> 翻炒 · <kbd>Enter</kbd> 出锅</p>
+    </div>
+  </div>
+
+  <!-- 结果 -->
+  <div id="result" class="hidden">
+    <div class="result-card">
+      <div class="result-top">
+        <div class="result-dish" aria-hidden="true">
+          <span class="dish-plate"></span>
+          <div id="dishShapes"></div>
+        </div>
+        <div class="result-copy">
+          <span class="result-kicker">出锅 · DONE</span>
+          <h2 id="resultDishName">番茄炒蛋</h2>
+          <div class="stars" id="stars">
+            <i></i><i></i><i></i>
+          </div>
+          <div class="result-score"><b id="scoreNum">--</b><span>分</span></div>
+        </div>
+      </div>
+
+      <div class="result-rows"></div>
+
+      <p id="resultComment">火候刚好，茄红蛋嫩，可以上桌了。</p>
+
+      <div class="result-extra">
+        <span id="comboLine">最高连击 --</span>
+        <span id="recordLine">本菜最佳 --</span>
+      </div>
+
+      <div class="receipt" id="receipt">
+        <div class="receipt-head">
+          <span>ORDER SLIP · 食客小票</span>
+          <em id="receiptNo">#0000</em>
+        </div>
+        <div class="receipt-guest">
+          <span class="receipt-avatar" id="receiptAvatar">客</span>
+          <div><b id="receiptGuest">邻居王阿姨</b><small id="receiptTable">3 号桌 · 现炒</small></div>
+        </div>
+        <p id="receiptComment">家常味，配碗米饭刚好。</p>
+        <div class="receipt-foot">
+          <span>复购概率</span>
+          <div class="receipt-rate"><i id="receiptFill"></i></div>
+          <b id="receiptRate">92%</b>
+        </div>
+      </div>
+
+      <div class="result-actions">
+        <button id="againBtn" type="button">再 做 一 份</button>
+        <button id="switchBtn" class="ghost-btn" type="button">换 道 菜</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
