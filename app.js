@@ -1132,6 +1132,18 @@ async function loadVision() {
   }
 }
 
+/* 手势库只加载一次：进选菜页就预下载，点开火时大概率已就绪 */
+let visionPromise = null;
+function ensureVision() {
+  if (!visionPromise) {
+    visionPromise = loadVision().then(ok => {
+      if (!ok) visionPromise = null; // 失败允许下次重试
+      return ok;
+    });
+  }
+  return visionPromise;
+}
+
 function enableMouseMode(reason) {
   S.inputMode = "mouse";
   setBadge();
@@ -1140,7 +1152,7 @@ function enableMouseMode(reason) {
   if (reason === "denied" || reason === "notfound" || reason === "error" || reason === "unsupported") {
     toast("摄像头不可用，已切换为鼠标 / 键盘模式", 3800);
   } else if (reason === "model") {
-    toast("手势识别库加载失败，已切换为鼠标 / 键盘模式", 3800);
+    toast("手势识别库未就绪，已切换为鼠标 / 键盘模式", 3800);
   }
   document.body.classList.add("input-mouse");
   S.cursor.visible = true;
@@ -1169,8 +1181,8 @@ async function setupCamera() {
   }
 
   setCamState("正在加载手势识别库…", true);
-  el.startHint.textContent = "手势库加载中…";
-  const ok = await withTimeout(loadVision(), 20000);
+  el.startHint.textContent = S.visionOk ? "手势库加载中…" : "手势库首次下载约 17MB，请稍候…";
+  const ok = await withTimeout(ensureVision(), 60000);
 
   if (ok === true && S.landmarker) {
     S.inputMode = "camera";
@@ -1181,6 +1193,11 @@ async function setupCamera() {
     S.cursor.visible = false;
     toast("把手伸进画面 · 捏合抓取食材", 4200);
     el.startHint.textContent = "摄像头手势已就绪";
+  } else if (ok === "timeout") {
+    enableMouseMode("model");
+    setCamState("手势库仍在下载", false);
+    showCamOff("手势库正在下载", "首次需下载约 17MB，下载完成后再点一次「开火」即可使用手势", true);
+    toast("手势库首次下载较慢，下载完再点一次「开火」就能用手势了", 5200);
   } else {
     showCamOff("手势识别库加载失败", "已切换为鼠标 / 键盘模式", true);
     enableMouseMode("model");
@@ -2513,6 +2530,9 @@ function showDishGate() {
   refreshTrayLocks();
   el.trayCount.textContent = `0 / ${S.ingredients.length}`;
   setRing(0);
+
+  // 在选菜页就预下载手势库，点开火时直接可用
+  if (!S.visionOk) ensureVision();
 }
 
 function showResult() {
